@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- `wire.Config` gains an optional `TSLicense` field for applications whose
+  generated TypeScript wiring carries a different license than the Go one.
+  It defaults to `License` when empty.
+
 ## 0.1.0
 
 Initial release:

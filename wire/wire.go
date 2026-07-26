@@ -21,6 +21,15 @@ type Config struct {
 	GoWiringPath string
 	TSWiringPath string
 	License      string
+	TSLicense    string
+}
+
+// tsLicense returns the license for the TypeScript wiring file.
+func (c Config) tsLicense() string {
+	if c.TSLicense != "" {
+		return c.TSLicense
+	}
+	return c.License
 }
 
 // validateConfig checks that every Config field is set.
@@ -150,7 +159,7 @@ func generateTS(cfg Config, manifests []manifest) []byte {
 	}
 
 	var b strings.Builder
-	b.WriteString(generatedHeader(cfg.License))
+	b.WriteString(generatedHeader(cfg.tsLicense()))
 	fmt.Fprintf(&b, "import type { FrontendPlugin } from '%s'\n", cfg.FrontendSDK)
 	names := make([]string, 0, len(frontends))
 	for _, m := range frontends {

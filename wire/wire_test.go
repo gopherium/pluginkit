@@ -204,6 +204,23 @@ export const plugins: FrontendPlugin[] = [photo_gallery, feed]
 	}
 }
 
+func TestGenerateTSUsesTSLicenseWhenSet(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig
+	cfg.TSLicense = "AGPL-3.0-or-later"
+
+	goSrc := string(generateGo(cfg, []manifest{{ID: "feed", Name: "Feed", Backend: "example.com/myapp/plugins/feed"}}))
+	tsSrc := string(generateTS(cfg, []manifest{{ID: "feed", Name: "Feed", Frontend: "@myapp/plugin-feed"}}))
+
+	if want := "// SPDX-License-Identifier: Apache-2.0\n"; goSrc[:len(want)] != want {
+		t.Errorf("generateGo() header = %q, want the License field %q", goSrc[:len(want)], want)
+	}
+	if want := "// SPDX-License-Identifier: AGPL-3.0-or-later\n"; tsSrc[:len(want)] != want {
+		t.Errorf("generateTS() header = %q, want the TSLicense field %q", tsSrc[:len(want)], want)
+	}
+}
+
 func TestGenerateTSWithoutFrontendPlugins(t *testing.T) {
 	t.Parallel()
 
