@@ -4,8 +4,8 @@ package pluginkit
 
 import "net/http"
 
-// Protect wraps a plugin handler in the caller-supplied middleware, letting the
-// plugin's declared public paths through untouched (exact match, per [PublicPathProvider]).
+// Protect wraps a plugin handler in the caller-supplied middleware and serves the
+// plugin's declared public paths untouched (exact match, per [PublicPathProvider]).
 func Protect(handler http.Handler, publicPaths []string, wrap func(http.Handler) http.Handler) http.Handler {
 	public := make(map[string]struct{}, len(publicPaths))
 	for _, path := range publicPaths {
