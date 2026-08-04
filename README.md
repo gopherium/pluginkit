@@ -11,9 +11,9 @@ pluginkit is a set of primitives, not a framework. It grows by adding small
 independent building blocks, each usable on its own.
 
 - `Plugin` is the lifecycle contract, with the optional `Migrator`,
-  `RouteProvider`, and `PublicPathProvider` capabilities.
+  `Seeder`, `RouteProvider`, and `PublicPathProvider` capabilities.
 - `Host` migrates, starts, and stops a fixed set of plugins with rollback
-  and panic isolation.
+  and panic isolation, and seeds them on request outside the start path.
 - `Protect` guards a plugin's mounted routes with caller-supplied
   middleware while letting its declared public paths through untouched.
 - `wire` generates the Go and TypeScript plugin wiring files from

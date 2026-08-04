@@ -23,6 +23,12 @@ type Migrator interface {
 	Migrate(ctx context.Context) error
 }
 
+// Seeder is implemented by plugins that can fill their own schema with
+// development data, which the host asks for outside the start path.
+type Seeder interface {
+	Seed(ctx context.Context) error
+}
+
 // RouteProvider is implemented by plugins that expose HTTP endpoints
 // under their own namespace.
 type RouteProvider interface {

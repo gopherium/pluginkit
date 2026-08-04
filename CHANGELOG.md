@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- New optional `Seeder` capability, `Seed(ctx) error`, for plugins that can
+  fill their own schema with development data.
+- `Host.Seed` asks every `Seeder` in registration order and stops at the
+  first failure, with the same panic isolation as the other host calls.
+  Seeding stays outside `Start`, so booting never writes sample data.
+
 ## 0.2.0
 
 - `wire.Config` gains an optional `TSLicense` field for applications whose

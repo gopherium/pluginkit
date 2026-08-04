@@ -47,6 +47,21 @@ func (h *Host) Start(ctx context.Context) error {
 	return nil
 }
 
+// Seed asks every [Seeder] plugin to fill its schema in registration order,
+// stopping at the first failure.
+func (h *Host) Seed(ctx context.Context) error {
+	for _, p := range h.plugins {
+		seeder, ok := p.(Seeder)
+		if !ok {
+			continue
+		}
+		if err := safeCall(ctx, p.ID(), "seed", seeder.Seed); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Routes returns the HTTP handler of every [RouteProvider] plugin,
 // keyed by plugin ID.
 func (h *Host) Routes() map[string]http.Handler {
