@@ -10,6 +10,16 @@ Releases of this module are tagged `graphwire/vX.Y.Z`. The module lives
 beside the stdlib-only root so its gqlparser dependency never enters
 `pluginkit` itself.
 
+## [0.2.1] - 2026-08-07
+
+### Fixed
+
+- Composite resolver structs embedded two sets sharing an unqualified
+  type name, such as a core and a plugin `QueryResolvers`, which Go
+  rejects as a duplicate field. The generator now names each contributed
+  set through a package local type alias before embedding it, so shared
+  types compile with any number of contributors.
+
 ## [0.2.0] - 2026-08-06
 
 ### Added

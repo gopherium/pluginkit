@@ -173,17 +173,32 @@ type betaGraphResolvers interface {
 	QueryResolvers() beta.QueryResolvers
 }
 
+// coreQueryResolvers names the core Query resolver set for embedding.
+type coreQueryResolvers = graphres.QueryResolvers
+
+// alphaQueryResolvers names the alpha Query resolver set for embedding.
+type alphaQueryResolvers = alpha.QueryResolvers
+
+// betaQueryResolvers names the beta Query resolver set for embedding.
+type betaQueryResolvers = beta.QueryResolvers
+
 // composedQueryResolver merges every contributed Query resolver set.
 type composedQueryResolver struct {
-	graphres.QueryResolvers
-	alpha.QueryResolvers
-	beta.QueryResolvers
+	coreQueryResolvers
+	alphaQueryResolvers
+	betaQueryResolvers
 }
+
+// coreThingResolvers names the core Thing resolver set for embedding.
+type coreThingResolvers = graphres.ThingResolvers
+
+// alphaThingResolvers names the alpha Thing resolver set for embedding.
+type alphaThingResolvers = alpha.ThingResolvers
 
 // composedThingResolver merges every contributed Thing resolver set.
 type composedThingResolver struct {
-	graphres.ThingResolvers
-	alpha.ThingResolvers
+	coreThingResolvers
+	alphaThingResolvers
 }
 
 // graphRoot composes the core and plugin resolver sets into the resolver root.

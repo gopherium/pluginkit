@@ -154,17 +154,23 @@ func typeContributors(core contributor, plugins []contributor) ([]string, map[st
 	return types, contributorsOf
 }
 
-// writeComposites renders one merged resolver struct per shared type.
+// writeComposites renders one merged resolver struct per shared type, naming
+// each contributed set through an alias so the embedded fields stay distinct.
 func writeComposites(b *strings.Builder, types []string, contributorsOf map[string][]contributor) {
 	for _, typeName := range types {
 		contributors := contributorsOf[typeName]
 		if len(contributors) < 2 {
 			continue
 		}
+		for _, c := range contributors {
+			fmt.Fprintf(b, "// %s%sResolvers names the %s %s resolver set for embedding.\n",
+				c.field, typeName, c.field, typeName)
+			fmt.Fprintf(b, "type %s%sResolvers = %s.%sResolvers\n\n", c.field, typeName, c.alias, typeName)
+		}
 		fmt.Fprintf(b, "// composed%sResolver merges every contributed %s resolver set.\n", typeName, typeName)
 		fmt.Fprintf(b, "type composed%sResolver struct {\n", typeName)
 		for _, c := range contributors {
-			fmt.Fprintf(b, "\t%s.%sResolvers\n", c.alias, typeName)
+			fmt.Fprintf(b, "\t%s%sResolvers\n", c.field, typeName)
 		}
 		b.WriteString("}\n\n")
 	}
