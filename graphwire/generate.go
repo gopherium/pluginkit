@@ -8,6 +8,37 @@ import (
 	"strings"
 )
 
+// naming carries the package name and identifier casing of the generated file.
+type naming struct {
+	pkg         string
+	packageMode bool
+}
+
+// namingFor resolves the generated naming from the config.
+func namingFor(cfg Config) naming {
+	if cfg.Package == "" {
+		return naming{pkg: "main"}
+	}
+	return naming{pkg: cfg.Package, packageMode: true}
+}
+
+// rootFunc returns the root constructor name.
+func (n naming) rootFunc() string {
+	if n.packageMode {
+		return "NewGraphRoot"
+	}
+	return "newGraphRoot"
+}
+
+// ifaceName returns the contributor interface name for field.
+func (n naming) ifaceName(field string) string {
+	name := field + "GraphResolvers"
+	if n.packageMode {
+		return strings.ToUpper(field[:1]) + field[1:] + "GraphResolvers"
+	}
+	return name
+}
+
 // generatedHeader renders the SPDX and generated-code header for license.
 func generatedHeader(license string) string {
 	return "// SPDX-License-Identifier: " + license + "\n\n" +
@@ -16,39 +47,59 @@ func generatedHeader(license string) string {
 
 // generate renders the unformatted resolver root wiring file.
 func generate(cfg Config, core contributor, plugins []contributor) []byte {
+	n := namingFor(cfg)
 	var b strings.Builder
 	b.WriteString(generatedHeader(cfg.License))
-	b.WriteString("package main\n\n")
-	writeImports(&b, cfg, plugins)
+	fmt.Fprintf(&b, "package %s\n\n", n.pkg)
+	writeImports(&b, cfg, plugins, n)
 	if len(plugins) == 0 {
-		b.WriteString("// newGraphRoot returns the core resolver root, no plugin extends the graph.\n")
-		b.WriteString("func newGraphRoot(core graph.ResolverRoot) graph.ResolverRoot {\n\treturn core\n}\n")
+		writePassthrough(&b, n)
 		return []byte(b.String())
 	}
-	writeContributorInterface(&b, core, "the core contributes to the graph")
+	writeContributorInterface(&b, core, "the core contributes to the graph", n)
 	for _, plugin := range plugins {
-		writeContributorInterface(&b, plugin, "the "+plugin.field+" plugin contributes to the graph")
+		writeContributorInterface(&b, plugin, "the "+plugin.field+" plugin contributes to the graph", n)
 	}
 	types, contributorsOf := typeContributors(core, plugins)
 	writeComposites(&b, types, contributorsOf)
-	writeRoot(&b, core, plugins)
+	writeRoot(&b, core, plugins, n)
+	if n.packageMode {
+		writeFromPlugins(&b, core, plugins, n)
+	}
 	writeAccessors(&b, types, contributorsOf)
 	return []byte(b.String())
 }
 
-// writeImports renders the aliased import block sorted by import path.
-func writeImports(b *strings.Builder, cfg Config, plugins []contributor) {
-	type imported struct{ alias, path string }
+// imported is one aliased import of the generated file.
+type imported struct{ alias, path string }
+
+// wiringImports returns the generated file's imports sorted by path.
+func wiringImports(cfg Config, plugins []contributor, n naming) []imported {
 	imports := []imported{{"graph", cfg.ExecImport}}
 	if len(plugins) > 0 {
 		imports = append(imports, imported{goName(pathBase(cfg.CoreImport)), cfg.CoreImport})
+	}
+	if n.packageMode {
+		imports = append(imports, imported{"sdk", cfg.SDKImport})
+		if len(plugins) > 0 {
+			imports = append(imports, imported{"", "errors"})
+		}
 	}
 	for _, plugin := range plugins {
 		imports = append(imports, imported{plugin.alias, plugin.path})
 	}
 	sort.Slice(imports, func(i, j int) bool { return imports[i].path < imports[j].path })
+	return imports
+}
+
+// writeImports renders the aliased import block.
+func writeImports(b *strings.Builder, cfg Config, plugins []contributor, n naming) {
 	b.WriteString("import (\n")
-	for _, entry := range imports {
+	for _, entry := range wiringImports(cfg, plugins, n) {
+		if entry.alias == "" {
+			fmt.Fprintf(b, "\t%q\n", entry.path)
+			continue
+		}
 		fmt.Fprintf(b, "\t%s %q\n", entry.alias, entry.path)
 	}
 	b.WriteString(")\n\n")
@@ -62,10 +113,22 @@ func pathBase(path string) string {
 	return path
 }
 
+// writePassthrough renders the zero plugin root.
+func writePassthrough(b *strings.Builder, n naming) {
+	fmt.Fprintf(b, "// %s returns the core resolver root, no plugin extends the graph.\n", n.rootFunc())
+	fmt.Fprintf(b, "func %s(core graph.ResolverRoot) graph.ResolverRoot {\n\treturn core\n}\n", n.rootFunc())
+	if !n.packageMode {
+		return
+	}
+	b.WriteString("\n// FromPlugins composes the resolver root, no registered plugin extends the graph.\n")
+	b.WriteString("func FromPlugins(core graph.ResolverRoot, _ []sdk.Plugin) (graph.ResolverRoot, error) {\n")
+	b.WriteString("\treturn core, nil\n}\n")
+}
+
 // writeContributorInterface renders one contributor's resolver set interface.
-func writeContributorInterface(b *strings.Builder, c contributor, owner string) {
-	fmt.Fprintf(b, "// %sGraphResolvers lists the resolver sets %s.\n", c.field, owner)
-	fmt.Fprintf(b, "type %sGraphResolvers interface {\n", c.field)
+func writeContributorInterface(b *strings.Builder, c contributor, owner string, n naming) {
+	fmt.Fprintf(b, "// %s lists the resolver sets %s.\n", n.ifaceName(c.field), owner)
+	fmt.Fprintf(b, "type %s interface {\n", n.ifaceName(c.field))
 	for _, typeName := range c.types {
 		fmt.Fprintf(b, "\t%sResolvers() %s.%sResolvers\n", typeName, c.alias, typeName)
 	}
@@ -108,19 +171,19 @@ func writeComposites(b *strings.Builder, types []string, contributorsOf map[stri
 }
 
 // writeRoot renders the root type and its constructor.
-func writeRoot(b *strings.Builder, core contributor, plugins []contributor) {
+func writeRoot(b *strings.Builder, core contributor, plugins []contributor, n naming) {
 	b.WriteString("// graphRoot composes the core and plugin resolver sets into the resolver root.\n")
 	b.WriteString("type graphRoot struct {\n")
-	fmt.Fprintf(b, "\t%s %sGraphResolvers\n", core.field, core.field)
+	fmt.Fprintf(b, "\t%s %s\n", core.field, n.ifaceName(core.field))
 	for _, plugin := range plugins {
-		fmt.Fprintf(b, "\t%s %sGraphResolvers\n", plugin.field, plugin.field)
+		fmt.Fprintf(b, "\t%s %s\n", plugin.field, n.ifaceName(plugin.field))
 	}
 	b.WriteString("}\n\n")
-	b.WriteString("// newGraphRoot composes the core resolver sets with every graphql plugin's.\n")
-	b.WriteString("func newGraphRoot(\n")
-	fmt.Fprintf(b, "\t%s %sGraphResolvers,\n", core.param, core.field)
+	fmt.Fprintf(b, "// %s composes the core resolver sets with every graphql plugin's.\n", n.rootFunc())
+	fmt.Fprintf(b, "func %s(\n", n.rootFunc())
+	fmt.Fprintf(b, "\t%s %s,\n", core.param, n.ifaceName(core.field))
 	for _, plugin := range plugins {
-		fmt.Fprintf(b, "\t%s %sGraphResolvers,\n", plugin.param, plugin.field)
+		fmt.Fprintf(b, "\t%s %s,\n", plugin.param, n.ifaceName(plugin.field))
 	}
 	b.WriteString(") graph.ResolverRoot {\n\treturn graphRoot{")
 	assignments := []string{core.field + ": " + core.param}
@@ -129,6 +192,33 @@ func writeRoot(b *strings.Builder, core contributor, plugins []contributor) {
 	}
 	b.WriteString(strings.Join(assignments, ", "))
 	b.WriteString("}\n}\n\n")
+}
+
+// writeFromPlugins renders the assembler locating each plugin's resolver sets.
+func writeFromPlugins(b *strings.Builder, core contributor, plugins []contributor, n naming) {
+	b.WriteString("// FromPlugins finds each graphql plugin among the registered plugins" +
+		" and composes the resolver root.\n")
+	fmt.Fprintf(b, "func FromPlugins(core %s, plugins []sdk.Plugin) (graph.ResolverRoot, error) {\n",
+		n.ifaceName(core.field))
+	for _, plugin := range plugins {
+		fmt.Fprintf(b, "\tvar %s %s\n", plugin.param, n.ifaceName(plugin.field))
+	}
+	b.WriteString("\tfor _, plugin := range plugins {\n")
+	for _, plugin := range plugins {
+		fmt.Fprintf(b, "\t\tif candidate, ok := plugin.(%s); ok {\n\t\t\t%s = candidate\n\t\t}\n",
+			n.ifaceName(plugin.field), plugin.param)
+	}
+	b.WriteString("\t}\n")
+	for _, plugin := range plugins {
+		fmt.Fprintf(b, "\tif %s == nil {\n\t\treturn nil, errors.New(%q)\n\t}\n",
+			plugin.param,
+			n.pkg+": no registered plugin provides the "+plugin.field+" resolver sets")
+	}
+	params := []string{"core"}
+	for _, plugin := range plugins {
+		params = append(params, plugin.param)
+	}
+	fmt.Fprintf(b, "\treturn %s(%s), nil\n}\n\n", n.rootFunc(), strings.Join(params, ", "))
 }
 
 // writeAccessors renders one ResolverRoot accessor per contributed type.

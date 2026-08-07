@@ -31,6 +31,12 @@ type Config struct {
 	WiringPath string
 	// License is the SPDX identifier of the generated header.
 	License string
+	// Package names the generated package, exporting its identifiers and
+	// the FromPlugins assembler. Empty generates an unexported package main.
+	Package string
+	// SDKImport is the package declaring the plugin interface, required
+	// with Package for the FromPlugins assembler.
+	SDKImport string
 }
 
 // validateConfig checks that every Config field is set.
@@ -49,6 +55,9 @@ func validateConfig(cfg Config) error {
 		if !field.set {
 			return fmt.Errorf("graphwire: Config.%s is required", field.name)
 		}
+	}
+	if cfg.Package != "" && cfg.SDKImport == "" {
+		return errors.New("graphwire: Config.SDKImport is required with Config.Package")
 	}
 	return nil
 }

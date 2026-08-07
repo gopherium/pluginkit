@@ -10,7 +10,17 @@ Releases of this module are tagged `graphwire/vX.Y.Z`. The module lives
 beside the stdlib-only root so its gqlparser dependency never enters
 `pluginkit` itself.
 
-## [Unreleased]
+## [0.2.0] - 2026-08-06
+
+### Added
+
+- `Config.Package` and `Config.SDKImport`, generating into a named
+  importable package with exported identifiers instead of package main,
+  plus the `FromPlugins` assembler that locates each graphql plugin's
+  resolver sets among the registered plugins by type assertion and
+  composes the root, failing loudly when a flagged plugin is absent.
+
+## [0.1.0] - 2026-08-06
 
 ### Added
 
