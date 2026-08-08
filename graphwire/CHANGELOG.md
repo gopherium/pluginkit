@@ -20,7 +20,7 @@ beside the stdlib-only root so its gqlparser dependency never enters
   set through a package local type alias before embedding it, so shared
   types compile with any number of contributors.
 
-## [0.2.0] - 2026-08-06
+## [0.2.0] - 2026-08-07
 
 ### Added
 
@@ -30,7 +30,7 @@ beside the stdlib-only root so its gqlparser dependency never enters
   resolver sets among the registered plugins by type assertion and
   composes the root, failing loudly when a flagged plugin is absent.
 
-## [0.1.0] - 2026-08-06
+## [0.1.0] - 2026-08-07
 
 ### Added
 

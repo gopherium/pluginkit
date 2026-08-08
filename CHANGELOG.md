@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0
+## 0.3.0 - 2026-08-05
 
 - New optional `Seeder` capability, `Seed(ctx) error`, for plugins that can
   fill their own schema with development data.
@@ -8,13 +8,13 @@
   first failure, with the same panic isolation as the other host calls.
   Seeding stays outside `Start`, so booting never writes sample data.
 
-## 0.2.0
+## 0.2.0 - 2026-07-26
 
 - `wire.Config` gains an optional `TSLicense` field for applications whose
   generated TypeScript wiring carries a different license than the Go one.
   It defaults to `License` when empty.
 
-## 0.1.0
+## 0.1.0 - 2026-07-26
 
 Initial release:
 
