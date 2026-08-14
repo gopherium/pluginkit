@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package wire generates an application's plugin wiring files from the
-// plugin.json manifest of every directory under plugins/.
+// plugin.json manifest of every directory under each configured plugin root.
 package wire
 
 import (
@@ -22,6 +22,15 @@ type Config struct {
 	TSWiringPath string
 	License      string
 	TSLicense    string
+	Roots        []string
+}
+
+// roots returns the plugin root directories scanned in order, defaulting to plugins.
+func (c Config) roots() []string {
+	if len(c.Roots) == 0 {
+		return []string{"plugins"}
+	}
+	return c.Roots
 }
 
 // tsLicense returns the license for the TypeScript wiring file.
@@ -74,6 +83,26 @@ func loadManifests(dir string) ([]manifest, error) {
 			return nil, fmt.Errorf("pluginwire: %s: %w", path, err)
 		}
 		manifests = append(manifests, m)
+	}
+	return manifests, nil
+}
+
+// loadRoots loads the manifests under every plugin root in order, rejecting an id present in more than one root.
+func loadRoots(dir string, roots []string) ([]manifest, error) {
+	var manifests []manifest
+	seen := make(map[string]string, len(roots))
+	for _, pluginRoot := range roots {
+		loaded, err := loadManifests(filepath.Join(dir, pluginRoot))
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range loaded {
+			if previous, ok := seen[m.ID]; ok {
+				return nil, fmt.Errorf("pluginwire: plugin %s appears under %s and %s", m.ID, previous, pluginRoot)
+			}
+			seen[m.ID] = pluginRoot
+		}
+		manifests = append(manifests, loaded...)
 	}
 	return manifests, nil
 }
@@ -177,7 +206,7 @@ func Run(root string, cfg Config) error {
 	if err := validateConfig(cfg); err != nil {
 		return err
 	}
-	manifests, err := loadManifests(filepath.Join(root, "plugins"))
+	manifests, err := loadRoots(root, cfg.roots())
 	if err != nil {
 		return err
 	}

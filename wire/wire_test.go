@@ -5,6 +5,7 @@ package wire
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,7 +26,12 @@ const feedManifest = `{
 
 func writePlugin(t *testing.T, root, dir, manifestJSON string) {
 	t.Helper()
-	pluginDir := filepath.Join(root, "plugins", dir)
+	writePluginIn(t, root, "plugins", dir, manifestJSON)
+}
+
+func writePluginIn(t *testing.T, root, pluginRoot, dir, manifestJSON string) {
+	t.Helper()
+	pluginDir := filepath.Join(root, pluginRoot, dir)
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", pluginDir, err)
 	}
@@ -276,6 +282,103 @@ func TestRunWritesWiringFiles(t *testing.T) {
 	}
 }
 
+func TestRunScansEveryRootInOrder(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writePlugin(t, root, "feed", feedManifest)
+	writePluginIn(t, root, "enterprise", "tenancy",
+		`{"id": "tenancy", "name": "Tenancy", "backend": "example.com/enterprise/tenancy"}`)
+	for _, dir := range []string{"cmd/myapp", "frontend/src/plugins"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatalf("creating %s: %v", dir, err)
+		}
+	}
+	cfg := testConfig
+	cfg.Roots = []string{"plugins", "enterprise"}
+
+	if err := Run(root, cfg); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+
+	goSrc, err := os.ReadFile(filepath.Join(root, "cmd", "myapp", "plugins_gen.go"))
+	if err != nil {
+		t.Fatalf("reading generated Go wiring: %v", err)
+	}
+	feedAt := strings.Index(string(goSrc), "example.com/myapp/plugins/feed")
+	tenancyAt := strings.Index(string(goSrc), "example.com/enterprise/tenancy")
+	if feedAt < 0 || tenancyAt < 0 {
+		t.Fatalf("plugins_gen.go = %q, want imports from both roots", goSrc)
+	}
+	if feedAt > tenancyAt {
+		t.Errorf("plugins_gen.go orders the enterprise root before plugins, want root order")
+	}
+}
+
+func TestRunEmptySecondRootReproducesDefaultBytes(t *testing.T) {
+	t.Parallel()
+
+	defaultRoot := t.TempDir()
+	overlayRoot := t.TempDir()
+	for _, root := range []string{defaultRoot, overlayRoot} {
+		writePlugin(t, root, "feed", feedManifest)
+		for _, dir := range []string{"cmd/myapp", "frontend/src/plugins"} {
+			if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+				t.Fatalf("creating %s: %v", dir, err)
+			}
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(overlayRoot, "enterprise"), 0o755); err != nil {
+		t.Fatalf("creating the empty enterprise root: %v", err)
+	}
+	readme := filepath.Join(overlayRoot, "enterprise", "README.md")
+	if err := os.WriteFile(readme, []byte("enterprise plugins land here"), 0o644); err != nil {
+		t.Fatalf("writing the enterprise README: %v", err)
+	}
+	overlayConfig := testConfig
+	overlayConfig.Roots = []string{"plugins", "enterprise"}
+
+	if err := Run(defaultRoot, testConfig); err != nil {
+		t.Fatalf("Run() with the default root: %v", err)
+	}
+	if err := Run(overlayRoot, overlayConfig); err != nil {
+		t.Fatalf("Run() with the empty enterprise root: %v", err)
+	}
+
+	for _, generated := range []string{"cmd/myapp/plugins_gen.go", "frontend/src/plugins/index.ts"} {
+		defaultBytes, err := os.ReadFile(filepath.Join(defaultRoot, filepath.FromSlash(generated)))
+		if err != nil {
+			t.Fatalf("reading %s from the default run: %v", generated, err)
+		}
+		overlayBytes, err := os.ReadFile(filepath.Join(overlayRoot, filepath.FromSlash(generated)))
+		if err != nil {
+			t.Fatalf("reading %s from the overlay run: %v", generated, err)
+		}
+		if string(defaultBytes) != string(overlayBytes) {
+			t.Errorf("%s differs between the default and the empty enterprise root", generated)
+		}
+	}
+}
+
+func TestRunRejectsDuplicateIDAcrossRoots(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writePlugin(t, root, "feed", feedManifest)
+	writePluginIn(t, root, "enterprise", "feed", feedManifest)
+	cfg := testConfig
+	cfg.Roots = []string{"plugins", "enterprise"}
+
+	err := Run(root, cfg)
+
+	if err == nil {
+		t.Fatal("Run() error = nil, want a duplicate id error")
+	}
+	if !strings.Contains(err.Error(), "feed") {
+		t.Errorf("error = %q, want it to name the duplicated id", err)
+	}
+}
+
 func TestRunRejectsIncompleteConfig(t *testing.T) {
 	t.Parallel()
 
@@ -305,10 +408,22 @@ func TestRunReportsFailures(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
+		roots   []string
 		prepare func(t *testing.T, root string)
 	}{
 		"missing plugins directory": {
 			prepare: func(_ *testing.T, _ string) {},
+		},
+		"missing named root": {
+			roots: []string{"plugins", "enterprise"},
+			prepare: func(t *testing.T, root string) {
+				writePlugin(t, root, "feed", feedManifest)
+				for _, dir := range []string{"cmd/myapp", "frontend/src/plugins"} {
+					if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+						t.Fatalf("creating %s: %v", dir, err)
+					}
+				}
+			},
 		},
 		"unwritable go wiring": {
 			prepare: func(t *testing.T, root string) {
@@ -331,8 +446,10 @@ func TestRunReportsFailures(t *testing.T) {
 
 			root := t.TempDir()
 			tc.prepare(t, root)
+			cfg := testConfig
+			cfg.Roots = tc.roots
 
-			if err := Run(root, testConfig); err == nil {
+			if err := Run(root, cfg); err == nil {
 				t.Fatal("Run() error = nil, want an error")
 			}
 		})

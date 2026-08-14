@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 - 2026-08-14
+
+- `wire.Config` gains an optional `Roots` list naming the plugin root
+  directories scanned in order, defaulting to `plugins`. An id present
+  in more than one root is rejected.
+
 ## 0.3.0 - 2026-08-05
 
 - New optional `Seeder` capability, `Seed(ctx) error`, for plugins that can
