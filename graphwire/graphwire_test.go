@@ -76,7 +76,13 @@ func writeCore(t *testing.T, root string) {
 // writePlugin writes a plugin fixture with a manifest and optional SDL.
 func writePlugin(t *testing.T, root, id, manifestJSON, sdl string) {
 	t.Helper()
-	pluginDir := filepath.Join(root, "plugins", id)
+	writePluginIn(t, root, "plugins", id, manifestJSON, sdl)
+}
+
+// writePluginIn writes a plugin fixture under the named plugin root.
+func writePluginIn(t *testing.T, root, pluginRoot, id, manifestJSON, sdl string) {
+	t.Helper()
+	pluginDir := filepath.Join(root, pluginRoot, id)
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", pluginDir, err)
 	}
@@ -98,10 +104,16 @@ func writePlugin(t *testing.T, root, id, manifestJSON, sdl string) {
 // generated runs the generator and returns the wiring file contents.
 func generated(t *testing.T, root string) string {
 	t.Helper()
+	return generatedWith(t, root, testConfig)
+}
+
+// generatedWith runs the generator under cfg and returns the wiring file contents.
+func generatedWith(t *testing.T, root string, cfg Config) string {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, "cmd", "myapp"), 0o755); err != nil {
 		t.Fatalf("creating the output directory: %v", err)
 	}
-	if err := Run(root, testConfig); err != nil {
+	if err := Run(root, cfg); err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
 	content, err := os.ReadFile(filepath.Join(root, "cmd", "myapp", "graph_gen.go"))
@@ -385,6 +397,108 @@ func TestUnflaggedPluginsContributeNothing(t *testing.T) {
 
 	if got := generated(t, root); strings.Contains(got, "beta") {
 		t.Errorf("wiring mentions the unflagged beta plugin:\n%s", got)
+	}
+}
+
+func TestRunWiresAPluginFromASecondRoot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeCore(t, root)
+	writePlugin(t, root, "alpha",
+		`{"id": "alpha", "name": "Alpha", "backend": "example.com/myapp/plugins/alpha", "graphql": true}`,
+		alphaSchema)
+	writePluginIn(t, root, "enterprise", "tenancy",
+		`{"id": "tenancy", "name": "Tenancy", "backend": "example.com/enterprise/tenancy", "graphql": true}`,
+		betaSchema)
+	cfg := testConfig
+	cfg.Roots = []string{"plugins", "enterprise"}
+
+	got := generatedWith(t, root, cfg)
+
+	if !strings.Contains(got, "example.com/myapp/plugins/alpha") ||
+		!strings.Contains(got, "example.com/enterprise/tenancy") {
+		t.Fatalf("wiring = %q, want contributors from both roots", got)
+	}
+	alphaAt := strings.Index(got, "alphaPlugin")
+	tenancyAt := strings.Index(got, "tenancyPlugin")
+	if alphaAt < 0 || tenancyAt < 0 {
+		t.Fatalf("wiring = %q, want composed parameters for both plugins", got)
+	}
+	if alphaAt > tenancyAt {
+		t.Errorf("wiring composes the enterprise root before plugins, want root order")
+	}
+}
+
+func TestRunEmptySecondRootReproducesDefaultBytes(t *testing.T) {
+	t.Parallel()
+
+	defaultRoot := t.TempDir()
+	overlayRoot := t.TempDir()
+	for _, root := range []string{defaultRoot, overlayRoot} {
+		writeCore(t, root)
+		writePlugin(t, root, "alpha",
+			`{"id": "alpha", "name": "Alpha", "backend": "example.com/myapp/plugins/alpha", "graphql": true}`,
+			alphaSchema)
+	}
+	if err := os.MkdirAll(filepath.Join(overlayRoot, "enterprise"), 0o755); err != nil {
+		t.Fatalf("creating the empty enterprise root: %v", err)
+	}
+	readme := filepath.Join(overlayRoot, "enterprise", "README.md")
+	if err := os.WriteFile(readme, []byte("enterprise plugins land here"), 0o644); err != nil {
+		t.Fatalf("writing the enterprise README: %v", err)
+	}
+	overlayConfig := testConfig
+	overlayConfig.Roots = []string{"plugins", "enterprise"}
+
+	defaultWiring := generated(t, defaultRoot)
+	overlayWiring := generatedWith(t, overlayRoot, overlayConfig)
+
+	if defaultWiring != overlayWiring {
+		t.Errorf("wiring differs between the default and the empty enterprise root")
+	}
+}
+
+func TestRunRejectsDuplicateIDAcrossRoots(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeCore(t, root)
+	writePlugin(t, root, "alpha",
+		`{"id": "alpha", "name": "Alpha", "backend": "example.com/myapp/plugins/alpha", "graphql": true}`,
+		alphaSchema)
+	writePluginIn(t, root, "enterprise", "alpha",
+		`{"id": "alpha", "name": "Alpha", "backend": "example.com/enterprise/alpha", "graphql": true}`,
+		alphaSchema)
+	cfg := testConfig
+	cfg.Roots = []string{"plugins", "enterprise"}
+
+	err := Run(root, cfg)
+
+	if err == nil {
+		t.Fatal("Run() error = nil, want a duplicate id error")
+	}
+	if !strings.Contains(err.Error(), "alpha") {
+		t.Errorf("error = %q, want it to name the duplicated id", err)
+	}
+}
+
+func TestRunReportsAMissingNamedRoot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeCore(t, root)
+	writePlugin(t, root, "alpha",
+		`{"id": "alpha", "name": "Alpha", "backend": "example.com/myapp/plugins/alpha", "graphql": true}`,
+		alphaSchema)
+	if err := os.MkdirAll(filepath.Join(root, "cmd", "myapp"), 0o755); err != nil {
+		t.Fatalf("creating the output directory: %v", err)
+	}
+	cfg := testConfig
+	cfg.Roots = []string{"plugins", "enterprise"}
+
+	if err := Run(root, cfg); err == nil {
+		t.Fatal("Run() error = nil, want a missing root error")
 	}
 }
 

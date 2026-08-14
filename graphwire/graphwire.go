@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package graphwire generates an application's graph resolver root from the
-// plugin manifests and SDL of every directory under plugins/.
+// plugin manifests and SDL of every directory under each configured plugin root.
 package graphwire
 
 import (
@@ -37,6 +37,8 @@ type Config struct {
 	// SDKImport is the package declaring the plugin interface, required
 	// with Package for the FromPlugins assembler.
 	SDKImport string
+	// Roots lists the plugin root directories scanned in order, empty scanning plugins.
+	Roots []string
 }
 
 // validateConfig checks that every Config field is set.
@@ -67,6 +69,36 @@ type manifest struct {
 	ID      string `json:"id"`
 	Backend string `json:"backend"`
 	GraphQL bool   `json:"graphql"`
+	root    string
+}
+
+// roots returns the plugin root directories scanned in order, defaulting to plugins.
+func (c Config) roots() []string {
+	if len(c.Roots) == 0 {
+		return []string{"plugins"}
+	}
+	return c.Roots
+}
+
+// loadRoots loads the manifests under every plugin root in order, rejecting an id present in more than one root.
+func loadRoots(dir string, roots []string) ([]manifest, error) {
+	var manifests []manifest
+	seen := make(map[string]string, len(roots))
+	for _, pluginRoot := range roots {
+		loaded, err := loadManifests(filepath.Join(dir, pluginRoot))
+		if err != nil {
+			return nil, err
+		}
+		for i, m := range loaded {
+			if previous, ok := seen[m.ID]; ok {
+				return nil, fmt.Errorf("graphwire: plugin %s appears under %s and %s", m.ID, previous, pluginRoot)
+			}
+			seen[m.ID] = pluginRoot
+			loaded[i].root = pluginRoot
+		}
+		manifests = append(manifests, loaded...)
+	}
+	return manifests, nil
 }
 
 var idPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
@@ -257,7 +289,7 @@ func pluginContributors(root string, manifests []manifest) ([]contributor, error
 
 // scanPlugin reads one graphql plugin's SDL into its contributor entry.
 func scanPlugin(root string, m manifest) (contributor, error) {
-	files, err := globFiles(root, []string{"plugins/" + m.ID + "/graph/*.graphqls"})
+	files, err := globFiles(root, []string{m.root + "/" + m.ID + "/graph/*.graphqls"})
 	if err != nil {
 		return contributor{}, err
 	}
@@ -286,7 +318,7 @@ func Run(root string, cfg Config) error {
 	if err := validateConfig(cfg); err != nil {
 		return err
 	}
-	manifests, err := loadManifests(filepath.Join(root, "plugins"))
+	manifests, err := loadRoots(root, cfg.roots())
 	if err != nil {
 		return err
 	}

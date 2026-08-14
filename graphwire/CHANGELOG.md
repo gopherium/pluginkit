@@ -10,6 +10,15 @@ Releases of this module are tagged `graphwire/vX.Y.Z`. The module lives
 beside the stdlib-only root so its gqlparser dependency never enters
 `pluginkit` itself.
 
+## [0.3.0] - 2026-08-14
+
+### Added
+
+- `Config` gains an optional `Roots` list naming the plugin root
+  directories scanned in order, defaulting to `plugins`. Each plugin's
+  SDL is read from the root its manifest came from, and an id present
+  in more than one root is rejected.
+
 ## [0.2.1] - 2026-08-07
 
 ### Fixed
