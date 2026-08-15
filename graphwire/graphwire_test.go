@@ -355,6 +355,26 @@ func TestPackageModeComposesAndAssemblesFromPlugins(t *testing.T) {
 	}
 }
 
+func TestFromPluginsLetsALaterPluginOverrideAnEarlierOne(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeCore(t, root)
+	writePlugin(t, root, "alpha", alphaManifest, alphaSchema)
+
+	got := generatedPackage(t, root)
+
+	unconditional := "if candidate, ok := plugin.(AlphaGraphResolvers); ok {\n\t\t\talphaPlugin = candidate\n\t\t}"
+	if !strings.Contains(got, unconditional) {
+		t.Errorf("wiring guards the assignment, a later plugin must override an earlier one\n%s", got)
+	}
+	loop := got[strings.Index(got, "for _, plugin := range plugins {"):]
+	loop = loop[:strings.Index(loop, "\n\t}")]
+	if strings.Contains(loop, "break") {
+		t.Errorf("the assignment loop breaks early, a later plugin must override an earlier one\n%s", loop)
+	}
+}
+
 func TestPackageModeRequiresTheSDKImport(t *testing.T) {
 	t.Parallel()
 
