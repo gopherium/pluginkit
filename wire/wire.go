@@ -23,6 +23,9 @@ type Config struct {
 	License      string
 	TSLicense    string
 	Roots        []string
+
+	GoRegistryPath    string
+	GoRegistryPackage string
 }
 
 // roots returns the plugin root directories scanned in order, defaulting to plugins.
@@ -46,6 +49,9 @@ func validateConfig(cfg Config) error {
 	if cfg.SDKImport == "" || cfg.FrontendSDK == "" || cfg.GoWiringPath == "" ||
 		cfg.TSWiringPath == "" || cfg.License == "" {
 		return errors.New("wire: every Config field is required")
+	}
+	if (cfg.GoRegistryPath == "") != (cfg.GoRegistryPackage == "") {
+		return errors.New("wire: GoRegistryPath and GoRegistryPackage are required together")
 	}
 	return nil
 }
@@ -137,6 +143,17 @@ func generatedHeader(license string) string {
 
 // generateGo renders the generated Go plugin-wiring file.
 func generateGo(cfg Config, manifests []manifest) []byte {
+	return renderRegistration(cfg, manifests, "main", "", "registerPlugins")
+}
+
+// generateRegistry renders the generated importable plugin registry file.
+func generateRegistry(cfg Config, manifests []manifest) []byte {
+	doc := "// All registers every plugin and returns them in registration order.\n"
+	return renderRegistration(cfg, manifests, cfg.GoRegistryPackage, doc, "All")
+}
+
+// renderRegistration renders one Go file registering every backend plugin through the named function.
+func renderRegistration(cfg Config, manifests []manifest, pkg, doc, funcName string) []byte {
 	backends := make([]manifest, 0, len(manifests))
 	for _, m := range manifests {
 		if m.Backend != "" {
@@ -146,7 +163,7 @@ func generateGo(cfg Config, manifests []manifest) []byte {
 
 	var b strings.Builder
 	b.WriteString(generatedHeader(cfg.License))
-	b.WriteString("package main\n\nimport (\n")
+	fmt.Fprintf(&b, "package %s\n\nimport (\n", pkg)
 	for _, m := range backends {
 		fmt.Fprintf(&b, "\t%s %q\n", goName(m.ID), m.Backend)
 	}
@@ -154,13 +171,15 @@ func generateGo(cfg Config, manifests []manifest) []byte {
 		b.WriteString("\n")
 	}
 	fmt.Fprintf(&b, "\t%q\n)\n\n", cfg.SDKImport)
+	b.WriteString(doc)
 	if len(backends) == 0 {
-		b.WriteString("func registerPlugins(_ sdk.Deps) ([]sdk.Plugin, error) {\n\treturn []sdk.Plugin{}, nil\n}\n")
+		fmt.Fprintf(&b, "func %s(_ sdk.Deps) ([]sdk.Plugin, error) {\n\treturn []sdk.Plugin{}, nil\n}\n", funcName)
 		return []byte(b.String())
 	}
 	fmt.Fprintf(
 		&b,
-		"func registerPlugins(deps sdk.Deps) ([]sdk.Plugin, error) {\n\tplugins := make([]sdk.Plugin, 0, %d)\n",
+		"func %s(deps sdk.Deps) ([]sdk.Plugin, error) {\n\tplugins := make([]sdk.Plugin, 0, %d)\n",
+		funcName,
 		len(backends),
 	)
 	for _, m := range backends {
@@ -216,6 +235,13 @@ func Run(root string, cfg Config) error {
 	}
 	tsPath := filepath.Join(root, filepath.FromSlash(cfg.TSWiringPath))
 	if err := os.WriteFile(tsPath, generateTS(cfg, manifests), 0o644); err != nil {
+		return fmt.Errorf("pluginwire: %w", err)
+	}
+	if cfg.GoRegistryPath == "" {
+		return nil
+	}
+	registryPath := filepath.Join(root, filepath.FromSlash(cfg.GoRegistryPath))
+	if err := os.WriteFile(registryPath, generateRegistry(cfg, manifests), 0o644); err != nil {
 		return fmt.Errorf("pluginwire: %w", err)
 	}
 	return nil

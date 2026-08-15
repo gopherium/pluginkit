@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-08-14
+
+- `wire.Config` gains optional `GoRegistryPath` and `GoRegistryPackage`
+  fields writing an importable registry whose `All` registers every
+  plugin, for test code that must compose the full set.
+
 ## 0.4.0 - 2026-08-14
 
 - `wire.Config` gains an optional `Roots` list naming the plugin root
