@@ -27,7 +27,6 @@ linters:
       rules:
         dependency-purity:
           list-mode: strict
-          files:
           allow:
             - $gostd
             - github.com/gopherium/pluginkit
