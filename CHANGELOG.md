@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-09-26
+
+- Deprecated: the module moved to `github.com/gopherium/framework/pluginkit`, where 0.6.0 is out.
+
 ## 0.5.0 - 2026-08-14
 
 - `wire.Config` gains optional `GoRegistryPath` and `GoRegistryPackage`
