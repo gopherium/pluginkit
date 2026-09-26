@@ -1,3 +1,4 @@
+// Deprecated: use github.com/gopherium/framework/pluginkit/graphwire instead.
 module github.com/gopherium/pluginkit/graphwire
 
 go 1.27.1

@@ -10,6 +10,12 @@ Releases of this module are tagged `graphwire/vX.Y.Z`. The module lives
 beside the stdlib-only root so its gqlparser dependency never enters
 `pluginkit` itself.
 
+## [0.3.1] - 2026-09-26
+
+### Deprecated
+
+- The module moved to `github.com/gopherium/framework/pluginkit/graphwire`, where 0.4.0 is out.
+
 ## [0.3.0] - 2026-08-14
 
 ### Added
