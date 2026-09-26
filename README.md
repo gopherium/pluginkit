@@ -1,45 +1,21 @@
 # pluginkit
 
-Compile-time plugin infrastructure for Go applications: a lifecycle host,
-plugin wiring generation, and route guarding. Framework-free and
-storage-agnostic. The application owns its plugin contract and its SDK
-surface, and pluginkit owns the mechanism underneath.
+This repository is archived. Both modules moved to the Gopherium framework,
+where their releases continue.
 
-## Design
+| Old path | New path |
+| --- | --- |
+| `github.com/gopherium/pluginkit` | `github.com/gopherium/framework/pluginkit` |
+| `github.com/gopherium/pluginkit/graphwire` | `github.com/gopherium/framework/pluginkit/graphwire` |
 
-pluginkit is a set of primitives, not a framework. It grows by adding small
-independent building blocks, each usable on its own.
+The first framework releases are pluginkit 0.6.0 and graphwire 0.4.0. Read
+their [changelog](https://github.com/gopherium/framework/blob/main/pluginkit/CHANGELOG.md)
+before you move, since `Host.Start` now takes a stop grace. The guides live
+on the [docs site](https://docs.gopherium.org/plugins/overview/).
 
-- `Plugin` is the lifecycle contract, with the optional `Migrator`,
-  `Seeder`, `RouteProvider`, and `PublicPathProvider` capabilities.
-- `Host` migrates, starts, and stops a fixed set of plugins with rollback
-  and panic isolation, and seeds them on request outside the start path.
-- `Protect` guards a plugin's mounted routes with caller-supplied
-  middleware while letting its declared public paths through untouched.
-- `wire` generates the Go and TypeScript plugin wiring files from
-  `plugins/*/plugin.json` manifests.
-
-Applications re-export the lifecycle types from their own SDK package as
-type aliases, so plugins depend only on the application's contract.
-
-## Usage
-
-```go
-host := pluginkit.NewHost(registeredPlugins...)
-if err := host.Start(ctx); err != nil {
-    return err
-}
-
-for id, handler := range host.Routes() {
-    mux.Handle("/api/plugins/"+id+"/", http.StripPrefix("/api/plugins/"+id,
-        pluginkit.Protect(handler, host.PublicPaths()[id], requireSession)))
-}
-
-serveErr := serve(ctx)
-stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), stopGrace)
-defer cancel()
-return errors.Join(serveErr, host.Stop(stopCtx))
-```
+Report security problems to the framework, as its
+[security policy](https://github.com/gopherium/framework/blob/main/SECURITY.md)
+explains.
 
 ## License
 
