@@ -27,14 +27,18 @@ type aliases, so plugins depend only on the application's contract.
 ```go
 host := pluginkit.NewHost(registeredPlugins...)
 if err := host.Start(ctx); err != nil {
-    // every migrator ran first and a failed start rolled back cleanly
+    return err
 }
-defer host.Stop(ctx)
 
 for id, handler := range host.Routes() {
     mux.Handle("/api/plugins/"+id+"/", http.StripPrefix("/api/plugins/"+id,
         pluginkit.Protect(handler, host.PublicPaths()[id], requireSession)))
 }
+
+serveErr := serve(ctx)
+stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), stopGrace)
+defer cancel()
+return errors.Join(serveErr, host.Stop(stopCtx))
 ```
 
 ## License
